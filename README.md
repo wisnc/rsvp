@@ -48,11 +48,17 @@ easiest way to convert to .txt is through https://convertio.co/epub-txt/
 otherwise use the epub2txt.py from the project
 
 Up - faster wpm
+
 Down - slower wpm
+
 Left - previous word
+
 Right - next word
+
 plus (+) - brighter display
+
 minus (-) - dimmer display
+
 backspace - exit to home
 
 
