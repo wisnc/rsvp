@@ -44,6 +44,9 @@ ebooks/
 read.txt should contain the entire book in text file. each word will be separated by either a newline or space
 prog.txt should be 0 for no progress. the value refers to the amount of characters already read as progress
 
+easiest way to convert to .txt is through https://convertio.co/epub-txt/
+otherwise use the epub2txt.py from the project
+
 
 ## Version History / Changelog
 
