@@ -30,7 +30,7 @@ Check releases for the latest binary
 your SD must have the file structure for ebooks as
 
 ```
-ebooks/
+/ebooks/
 ├─ BookName1/
 │  ├─ read.txt
 │  └─ prog.txt
