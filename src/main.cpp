@@ -19,6 +19,7 @@
 #define COL_TEXT   0xFFFF
 #define COL_ORP    0xFD20
 #define COL_DIM    0x4208
+#define COL_HIST   0x8410
 #define COL_PREV   0x2104
 #define COL_SELBG  0x1082
 
@@ -39,13 +40,24 @@
 #define CHAR_W      (6 * FONT_SCALE)
 #define CHAR_H      (8 * FONT_SCALE)
 
-#define PB_H  4
-#define PB_X  6
-#define PB_W  (SCR_W - PB_X * 2)
-#define PB_Y  (BY + BH - BRD - 8 - PB_H)
+#define BAR_H  4
 
-#define WY    (BY + BRD + 6)
-#define WH    (PB_Y - WY - 2)
+#define RD_TOP   16
+#define RD_H     103
+
+#define TXT_X       6
+#define TXT_LH      10
+#define TXT_MAXC    ((SCR_W - TXT_X * 2) / 6)
+#define ANCHOR_Y    72
+#define VIS_LINES   6
+
+#define DIV_Y       84
+#define MAIN_Y      90
+
+#define WIN_FWD     300
+#define WIN_BACK    520
+#define ADV_LIMIT   2000
+#define BUF_MAX     2700
 
 #define BRIGHT_STEP  25
 #define MIN_BRIGHT   10
@@ -72,6 +84,10 @@ static unsigned long     gDelay    = 0;
 static bool              gPlaying  = false;
 static int               gSaveCount = 0;
 static int               gBrightness = 128;
+static int               gAnchorPos  = -1;
+
+static M5Canvas          gCanvas(&M5Cardputer.Display);
+static bool              gCanvasOk = false;
 
 static SPIClass          gSdSpi(HSPI);
 static M5UnitScroll      gEncoder;
@@ -84,12 +100,13 @@ void drawMenu();
 void drawTitle();
 void openBook();
 void loadChunk();
+void loadChunkBefore(int firstPos);
 void parseWords(const char* buf, int n, int baseOffset, std::vector<Word>& out);
 void drawFrame();
 void drawWord(int idx);
 void drawInlineTop();
-void drawInlineBot();
-void drawProgressBar();
+void drawBottomBar();
+int snapWordStart(int a);
 void showCurrentWord();
 void saveProgress();
 int  loadProgress(const String& dir);
@@ -109,6 +126,10 @@ void setup() {
     M5Cardputer.Display.setTextColor(COL_TEXT);
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.setTextWrap(false);
+
+    gCanvas.setColorDepth(16);
+    gCanvasOk = (gCanvas.createSprite(SCR_W, SCR_H) != nullptr);
+    if (gCanvasOk) gCanvas.setTextWrap(false);
 
     Wire.begin(GROVE_SDA, GROVE_SCL);
     gEncoderOk = gEncoder.begin(&Wire, SCROLL_ADDR, GROVE_SDA, GROVE_SCL, 400000U);
@@ -182,10 +203,10 @@ void loop() {
                 if (k == '/') advanceWord();
                 else if (k == ',') retreatWord();
                 else if (k == ';') {
-                    if (gWpm < MAX_WPM) { gWpm += WPM_STEP; drawInlineBot(); }
+                    if (gWpm < MAX_WPM) { gWpm += WPM_STEP; drawBottomBar(); }
                 }
                 else if (k == '.') {
-                    if (gWpm > MIN_WPM) { gWpm -= WPM_STEP; drawInlineBot(); }
+                    if (gWpm > MIN_WPM) { gWpm -= WPM_STEP; drawBottomBar(); }
                 }
                 else if (k == '=' || k == '+') {
                     if (gBrightness < MAX_BRIGHT) {
@@ -226,12 +247,13 @@ void loop() {
             loadChunk();
             if (gWords.empty()) {
                 gPlaying = false;
-                auto& d = M5Cardputer.Display;
-                d.fillRect(0, WY, SCR_W, WH, COL_BG);
+                lgfx::LGFXBase& d = *(gCanvasOk ? (lgfx::LGFXBase*)&gCanvas : (lgfx::LGFXBase*)&M5Cardputer.Display);
+                d.fillRect(0, RD_TOP, SCR_W, RD_H, COL_BG);
                 d.setTextSize(2);
                 d.setTextColor(COL_DIM);
                 d.setCursor(85, SCR_H / 2 - 8);
                 d.print("- end -");
+                if (gCanvasOk) gCanvas.pushSprite(0, 0);
                 saveProgress();
                 return;
             }
@@ -261,7 +283,20 @@ void retreatWord() {
         showCurrentWord();
         gWIdx++;
         gLastMs = millis();
+        return;
     }
+
+    if (gWords.empty()) return;
+    int firstPos = gWords[0].pos;
+    if (firstPos <= 0) return;
+
+    loadChunkBefore(firstPos);
+    if (gWords.empty()) return;
+
+    gWIdx = (int)gWords.size() - 1;
+    showCurrentWord();
+    gWIdx++;
+    gLastMs = millis();
 }
 
 void showCurrentWord() {
@@ -354,6 +389,7 @@ void openBook() {
 
     gState   = READING;
     gPlaying = true;
+    gAnchorPos = -1;
     if (gEncoderOk) gEncPrev = gEncoder.getEncoderValue();
 
     drawFrame();
@@ -456,6 +492,26 @@ void loadChunk() {
     parseWords(buf, n, chunkStart, gWords);
 }
 
+void loadChunkBefore(int firstPos) {
+    gWords.clear();
+    gWIdx = 0;
+    if (!gFile || firstPos <= 0) return;
+
+    int start = firstPos - CHUNK_BYTES;
+    if (start < 0) start = 0;
+    if (start > 0) start = snapWordStart(start);
+    if (start >= firstPos) return;
+
+    int len = firstPos - start;
+    gFile.seek(start);
+    char buf[CHUNK_BYTES + 1];
+    int n = gFile.read((uint8_t*)buf, len);
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    parseWords(buf, n, start, gWords);
+}
+
 
 int loadProgress(const String& dir) {
     String path = dir + "/prog.txt";
@@ -500,7 +556,7 @@ unsigned long wordDelay(const String& w) {
 
 
 void drawInlineLabel(int borderY, const String& text, uint16_t textCol) {
-    auto& d = M5Cardputer.Display;
+    lgfx::LGFXBase& d = *(gCanvasOk ? (lgfx::LGFXBase*)&gCanvas : (lgfx::LGFXBase*)&M5Cardputer.Display);
     int tw = text.length() * 6;
     int tx = (SCR_W - tw) / 2;
     int gapPad = 5;
@@ -527,75 +583,203 @@ void drawInlineTop() {
     drawInlineLabel(BY, t, COL_ORP);
 }
 
-void drawInlineBot() {
+void drawBottomBar() {
+    lgfx::LGFXBase& d = *(gCanvasOk ? (lgfx::LGFXBase*)&gCanvas : (lgfx::LGFXBase*)&M5Cardputer.Display);
+    int by = BY + BH - BRD;
+
     char buf[16];
     snprintf(buf, sizeof(buf), "%d wpm", gWpm);
-    drawInlineLabel(BY + BH - BRD, String(buf), COL_ORP);
+    String text = String(buf);
+    int tw = text.length() * 6;
+    int rightPad = 6;
+    int gapPad = 6;
+    int tx = SCR_W - rightPad - tw;
+    int barW = tx - gapPad;
+
+    d.fillRect(0, by - 3, SCR_W, BAR_H + 8, COL_BG);
+
+    if (barW > 0) {
+        d.fillRect(0, by, barW, BAR_H, COL_DIM);
+        if (gFileSize > 0) {
+            long filled = ((long)barW * gCharOff) / gFileSize;
+            if (filled > barW) filled = barW;
+            if (filled > 0) d.fillRect(0, by, (int)filled, BAR_H, COL_ORP);
+        }
+    }
+
+    d.setTextSize(1);
+    d.setTextColor(COL_ORP);
+    d.setCursor(tx, by - 2);
+    d.print(text);
+
+    if (gCanvasOk) gCanvas.pushSprite(0, 0);
+}
+
+int snapWordStart(int a) {
+    if (a <= 0) return 0;
+    long saved = gFile.position();
+    gFile.seek(a);
+    char tmp[96];
+    int m = gFile.read((uint8_t*)tmp, 96);
+    gFile.seek(saved);
+    int j = 0;
+    while (j < m && tmp[j] != ' ' && tmp[j] != '\n' && tmp[j] != '\r' && tmp[j] != '\t') j++;
+    while (j < m && (tmp[j] == ' ' || tmp[j] == '\n' || tmp[j] == '\r' || tmp[j] == '\t')) j++;
+    return (j < m) ? a + j : a;
 }
 
 void drawFrame() {
-    auto& d = M5Cardputer.Display;
+    lgfx::LGFXBase& d = *(gCanvasOk ? (lgfx::LGFXBase*)&gCanvas : (lgfx::LGFXBase*)&M5Cardputer.Display);
     d.fillScreen(COL_BG);
     drawInlineTop();
-    drawInlineBot();
-}
-
-void drawProgressBar() {
-    auto& d = M5Cardputer.Display;
-    d.fillRect(PB_X, PB_Y, PB_W, PB_H, COL_BG);
-    if (gFileSize <= 0) return;
-    d.fillRect(PB_X, PB_Y + 1, PB_W, PB_H - 2, COL_DIM);
-    long filled = ((long)PB_W * gCharOff) / gFileSize;
-    if (filled > PB_W) filled = PB_W;
-    if (filled > 0)
-        d.fillRect(PB_X, PB_Y, (int)filled, PB_H, COL_ORP);
+    drawBottomBar();
 }
 
 void drawWord(int idx) {
-    auto& d = M5Cardputer.Display;
-    const String& txt = gWords[idx].text;
-    int len = txt.length();
+    lgfx::LGFXBase& d = *(gCanvasOk ? (lgfx::LGFXBase*)&gCanvas : (lgfx::LGFXBase*)&M5Cardputer.Display);
 
-    d.fillRect(0, WY, SCR_W, WH, COL_BG);
+    int curStart = gWords[idx].pos;
+    int curEnd   = curStart + gWords[idx].text.length();
+    (void)curEnd;
 
-    int wordY = WY + (WH / 2) - (CHAR_H / 2);
-    int prevY = wordY - 14;
-    int nextY = wordY + CHAR_H + 6;
-
-    if (idx > 0) {
-        const String& prev = gWords[idx - 1].text;
-        int pw = prev.length() * 6;
-        int px = (SCR_W - pw) / 2;
-        d.setTextSize(1);
-        d.setTextWrap(false);
-        d.setTextColor(COL_PREV);
-        d.setCursor(px, prevY);
-        d.print(prev);
+    if (gAnchorPos < 0 || curStart < gAnchorPos) {
+        int a = curStart - WIN_BACK;
+        if (a < 0) a = 0;
+        gAnchorPos = snapWordStart(a);
     }
 
-    int textW  = len * CHAR_W;
-    int startX = (SCR_W - textW) / 2;
+    int winEnd = curStart + WIN_FWD;
+    if (winEnd > gFileSize) winEnd = gFileSize;
+    int want = winEnd - gAnchorPos;
+    if (want < 0) want = 0;
+    if (want > BUF_MAX - 1) want = BUF_MAX - 1;
 
-    d.setTextSize(FONT_SCALE);
+    static char buf[BUF_MAX];
+    long saved = gFile.position();
+    gFile.seek(gAnchorPos);
+    int m = gFile.read((uint8_t*)buf, want);
+    gFile.seek(saved);
+
+    struct Tok { int off; int len; int pos; int nl; };
+    std::vector<Tok> toks;
+    {
+        int i = 0, pendingNL = 0;
+        while (i < m) {
+            while (i < m) {
+                char c = buf[i];
+                if (c == '\n') { pendingNL++; i++; }
+                else if (c == ' ' || c == '\r' || c == '\t') i++;
+                else break;
+            }
+            if (i >= m) break;
+            int ws = i;
+            while (i < m) {
+                char c = buf[i];
+                if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
+                i++;
+            }
+            toks.push_back({ws, i - ws, gAnchorPos + ws, pendingNL});
+            pendingNL = 0;
+        }
+    }
+
+    struct Line { std::vector<int> idx; bool blank; };
+    std::vector<Line> lines;
+    {
+        int maxc = TXT_MAXC;
+        Line cur; cur.blank = false; int curLen = 0; bool empty = true;
+        for (int k = 0; k < (int)toks.size(); k++) {
+            int nl = toks[k].nl;
+            if (!empty && nl >= 1) {
+                lines.push_back(cur);
+                cur = Line(); cur.blank = false; curLen = 0; empty = true;
+            }
+            if (nl >= 2) {
+                Line b; b.blank = true;
+                lines.push_back(b);
+            }
+            int tl = toks[k].len;
+            if (empty) {
+                cur.idx.push_back(k); curLen = tl; empty = false;
+            } else if (curLen + 1 + tl <= maxc) {
+                cur.idx.push_back(k); curLen += 1 + tl;
+            } else {
+                lines.push_back(cur);
+                cur = Line(); cur.blank = false;
+                cur.idx.push_back(k); curLen = tl; empty = false;
+            }
+        }
+        if (!empty) lines.push_back(cur);
+    }
+
+    int cli = -1;
+    for (int li = (int)lines.size() - 1; li >= 0 && cli < 0; li--) {
+        if (lines[li].blank) continue;
+        for (int k = 0; k < (int)lines[li].idx.size(); k++) {
+            if (toks[lines[li].idx[k]].pos == curStart) { cli = li; break; }
+        }
+    }
+    if (cli < 0) {
+        for (int li = (int)lines.size() - 1; li >= 0; li--) {
+            if (!lines[li].blank) { cli = li; break; }
+        }
+    }
+
+    d.fillRect(0, RD_TOP, SCR_W, RD_H, COL_BG);
+    d.setTextSize(1);
     d.setTextWrap(false);
-    d.setTextColor(COL_TEXT);
-    for (int i = 0; i < len; i++) {
-        int x = startX + (i * CHAR_W);
-        if (x + CHAR_W <= 0 || x >= SCR_W) continue;
-        d.setCursor(x, wordY);
-        d.print(txt.charAt(i));
+
+    if (cli >= 0) {
+        int firstLine = cli - (VIS_LINES - 1);
+        if (firstLine < 0) firstLine = 0;
+        for (int li = firstLine; li <= cli; li++) {
+            int y = ANCHOR_Y - (cli - li) * TXT_LH;
+            if (y < RD_TOP) continue;
+            if (lines[li].blank) continue;
+            int x = TXT_X;
+            for (int k = 0; k < (int)lines[li].idx.size(); k++) {
+                Tok& tk = toks[lines[li].idx[k]];
+                String s;
+                s.reserve(tk.len);
+                for (int j = 0; j < tk.len; j++) s += buf[tk.off + j];
+                d.setTextColor(tk.pos == curStart ? COL_ORP : COL_HIST);
+                d.setCursor(x, y);
+                d.print(s);
+                x += tk.len * 6 + 6;
+            }
+        }
     }
 
-    if (idx + 1 < (int)gWords.size()) {
-        const String& nxt = gWords[idx + 1].text;
-        int nw = nxt.length() * 6;
-        int nx = (SCR_W - nw) / 2;
-        d.setTextSize(1);
-        d.setTextWrap(false);
-        d.setTextColor(COL_PREV);
-        d.setCursor(nx, nextY);
-        d.print(nxt);
+    d.drawFastHLine(TXT_X, DIV_Y, SCR_W - TXT_X * 2, COL_DIM);
+
+    {
+        const String& fw = gWords[idx].text;
+        int fl = fw.length();
+        int fwW = fl * CHAR_W;
+        int fx = (SCR_W - fwW) / 2;
+        d.setTextSize(FONT_SCALE);
+        d.setTextColor(COL_TEXT);
+        for (int i = 0; i < fl; i++) {
+            int x = fx + i * CHAR_W;
+            if (x + CHAR_W <= 0 || x >= SCR_W) continue;
+            d.setCursor(x, MAIN_Y);
+            d.print(fw.charAt(i));
+        }
     }
 
-    drawProgressBar();
+    drawBottomBar();
+
+    if (cli >= 0 && (curStart - gAnchorPos) > ADV_LIMIT) {
+        int firstLine = cli - (VIS_LINES - 1);
+        if (firstLine < 0) firstLine = 0;
+        int target = firstLine - 3;
+        if (target < 0) target = 0;
+        for (int li = target; li <= cli; li++) {
+            if (!lines[li].blank && !lines[li].idx.empty()) {
+                int np = toks[lines[li].idx[0]].pos;
+                if (np > gAnchorPos) gAnchorPos = np;
+                break;
+            }
+        }
+    }
 }
