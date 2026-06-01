@@ -69,9 +69,10 @@ backspace - exit to home
 
 ## ASCII conversion
 
-as you know, the default encoding or font of the cardputer are limited by ascii printable. so books that contain UTF-8 characters cannot be displayed, provided on this repo is a script that can easily convert all the characters in your text to alternative characters that can be displayed by the cardputer
+as you know, the default encoding or font of the cardputer is limited by ascii printable. so books that contain UTF-8 characters cannot be displayed, provided on this repo is a script that can easily convert all the characters in your text to alternative characters that can be displayed by the cardputer
 
 ```
+cd ebooks
 python ascii-auto.py
 ```
 
