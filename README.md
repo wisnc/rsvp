@@ -80,6 +80,7 @@ run this command in /ebooks/
 
 this script checks out all directories beside it and converts all .txt
 
+**fun fact!** you can run this python script on micropython within the cardputer. use a micropython firmware
 
 ## Version History / Changelog
 
