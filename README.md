@@ -7,7 +7,11 @@ Rapid Serial Visual Presentation - an ebook reader for the m5cardputer
 
 home screen
 
-<img src="rsvp1.jpg" width="300">
+<img src="rsvp1.jpg" width="500">
+
+read screen
+
+<img src="read.gif" width="500">
 
 ---
 
@@ -24,6 +28,8 @@ pio run
 Just flash it with any launcher. or from the M5Burner.
 
 Check releases for the latest binary
+
+or [shameless plug](github.com/wisnc/crub)
 
 ## How to use
 
@@ -61,10 +67,28 @@ minus (-) - dimmer display
 
 backspace - exit to home
 
+## ASCII conversion
+
+as you know, the default encoding or font of the cardputer are limited by ascii printable. so books that contain UTF-8 characters cannot be displayed, provided on this repo is a script that can easily convert all the characters in your text to alternative characters that can be displayed by the cardputer
+
+```
+python ascii-auto.py
+```
+
+run this command in /ebooks/
+
+this script checks out all directories beside it and converts all .txt
+
 
 ## Version History / Changelog
 
-### v1.0
+### 2.0
+
+- massive change on the UI
+
+- upload python tool
+
+### 1.0
 
 - Public release
 - GitHub repository created
