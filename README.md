@@ -29,7 +29,7 @@ Just flash it with any launcher. or from the M5Burner.
 
 Check releases for the latest binary
 
-or [shameless plug](github.com/wisnc/crub)
+or [shameless plug](https://github.com/wisnc/crub)
 
 ## How to use
 
