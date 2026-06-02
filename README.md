@@ -84,6 +84,12 @@ this script checks out all directories beside it and converts all .txt
 
 ## Version History / Changelog
 
+### 2.1
+
+- persistent settings
+  
+- start on pause
+
 ### 2.0
 
 - massive change on the UI
