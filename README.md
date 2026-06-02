@@ -43,12 +43,16 @@ your SD must have the file structure for ebooks as
 ├─ BookName2/
 │  ├─ read.txt
 │  └─ prog.txt
-└─ Sample_Book_A/
-   ├─ read.txt
-   └─ prog.txt
+├─ Sample_Book_A/
+│  ├─ read.txt
+│  └─ prog.txt
+│
+└─ascii-auto.py
 ```
 read.txt should contain the entire book in text file. each word will be separated by either a newline or space
 prog.txt should be 0 for no progress. the value refers to the amount of characters already read as progress
+
+running ascii-auto.py through python or micropython `run('ascii-auto.py')` will automatically convert all your characters to ascii-printable and direct equivalent
 
 easiest way to convert to .txt is through https://convertio.co/epub-txt/
 otherwise use the epub2txt.py from the project
@@ -69,6 +73,8 @@ backspace - exit to home
 
 space - pause/play rsvp
 
+p - show/hide peripheral words on the rsvp
+
 ## ASCII conversion
 
 as you know, the default encoding or font of the cardputer is limited by ascii printable. so books that contain UTF-8 characters cannot be displayed, provided on this repo is a script that can easily convert all the characters in your text to alternative characters that can be displayed by the cardputer
@@ -85,6 +91,10 @@ this script checks out all directories beside it and converts all .txt
 **fun fact!** you can run this python script on micropython within the cardputer. use a micropython firmware
 
 ## Version History / Changelog
+
+### 2.2
+
+- added peripheral words feature
 
 ### 2.1
 

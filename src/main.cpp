@@ -85,6 +85,7 @@ static bool              gPlaying  = false;
 static int               gSaveCount = 0;
 static int               gBrightness = 128;
 static int               gAnchorPos  = -1;
+static bool              gPeripheral = false;
 
 static M5Canvas          gCanvas(&M5Cardputer.Display);
 static bool              gCanvasOk = false;
@@ -226,6 +227,11 @@ void loop() {
                         M5Cardputer.Display.setBrightness(gBrightness);
                         saveSettings();
                     }
+                }
+                else if (k == 'p') {
+                    gPeripheral = !gPeripheral;
+                    saveSettings();
+                    if (gWIdx > 0) drawWord(gWIdx - 1);
                 }
             }
         }
@@ -551,11 +557,15 @@ void loadSettings() {
         int eq = line.indexOf('=');
         if (eq < 0) continue;
         String key = line.substring(0, eq);
-        int val = line.substring(eq + 1).toInt();
+        String vs = line.substring(eq + 1);
+        vs.trim();
+        int val = vs.toInt();
         if (key == "wpm") {
             if (val >= MIN_WPM && val <= MAX_WPM) gWpm = val;
         } else if (key == "bright") {
             if (val >= MIN_BRIGHT && val <= MAX_BRIGHT) gBrightness = val;
+        } else if (key == "peripheral_words") {
+            gPeripheral = (vs == "true");
         }
     }
     f.close();
@@ -569,6 +579,8 @@ void saveSettings() {
     f.println(gWpm);
     f.print("bright=");
     f.println(gBrightness);
+    f.print("peripheral_words=");
+    f.println(gPeripheral ? "true" : "false");
     f.close();
 }
 
@@ -671,6 +683,17 @@ void drawFrame() {
     d.fillScreen(COL_BG);
     drawInlineTop();
     drawBottomBar();
+}
+
+void drawBigToken(lgfx::LGFXBase& d, const String& s, int x, int y, uint16_t col) {
+    int n = s.length();
+    d.setTextColor(col);
+    for (int i = 0; i < n; i++) {
+        int cx = x + i * CHAR_W;
+        if (cx + CHAR_W <= 0 || cx >= SCR_W) continue;
+        d.setCursor(cx, y);
+        d.print(s.charAt(i));
+    }
 }
 
 void drawWord(int idx) {
@@ -791,18 +814,35 @@ void drawWord(int idx) {
     d.drawFastHLine(TXT_X, DIV_Y, SCR_W - TXT_X * 2, COL_DIM);
 
     {
-        const String& fw = gWords[idx].text;
-        int fl = fw.length();
-        int fwW = fl * CHAR_W;
-        int fx = (SCR_W - fwW) / 2;
         d.setTextSize(FONT_SCALE);
-        d.setTextColor(COL_TEXT);
-        for (int i = 0; i < fl; i++) {
-            int x = fx + i * CHAR_W;
-            if (x + CHAR_W <= 0 || x >= SCR_W) continue;
-            d.setCursor(x, MAIN_Y);
-            d.print(fw.charAt(i));
+
+        const String& fw = gWords[idx].text;
+        int fwW = fw.length() * CHAR_W;
+        int fx  = (SCR_W - fwW) / 2;
+
+        if (gPeripheral) {
+            int curTok = -1;
+            for (int k = 0; k < (int)toks.size(); k++) {
+                if (toks[k].pos == curStart) { curTok = k; break; }
+            }
+
+            if (curTok > 0) {
+                int pl = toks[curTok - 1].len;
+                String pv;
+                pv.reserve(pl);
+                for (int j = 0; j < pl; j++) pv += buf[toks[curTok - 1].off + j];
+                drawBigToken(d, pv, fx - CHAR_W - pl * CHAR_W, MAIN_Y, COL_HIST);
+            }
+            if (curTok >= 0 && curTok + 1 < (int)toks.size()) {
+                int nl2 = toks[curTok + 1].len;
+                String nx;
+                nx.reserve(nl2);
+                for (int j = 0; j < nl2; j++) nx += buf[toks[curTok + 1].off + j];
+                drawBigToken(d, nx, fx + fwW + CHAR_W, MAIN_Y, COL_HIST);
+            }
         }
+
+        drawBigToken(d, fw, fx, MAIN_Y, COL_TEXT);
     }
 
     drawBottomBar();
