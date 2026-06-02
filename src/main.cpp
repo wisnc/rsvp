@@ -110,6 +110,8 @@ int snapWordStart(int a);
 void showCurrentWord();
 void saveProgress();
 int  loadProgress(const String& dir);
+void loadSettings();
+void saveSettings();
 unsigned long wordDelay(const String& w);
 void seekToWordBoundary();
 void advanceWord();
@@ -144,6 +146,9 @@ void setup() {
         M5Cardputer.Display.print("SD card not found");
         while (true) delay(1000);
     }
+
+    loadSettings();
+    M5Cardputer.Display.setBrightness(gBrightness);
 
     scanBooks();
 
@@ -203,21 +208,23 @@ void loop() {
                 if (k == '/') advanceWord();
                 else if (k == ',') retreatWord();
                 else if (k == ';') {
-                    if (gWpm < MAX_WPM) { gWpm += WPM_STEP; drawBottomBar(); }
+                    if (gWpm < MAX_WPM) { gWpm += WPM_STEP; drawBottomBar(); saveSettings(); }
                 }
                 else if (k == '.') {
-                    if (gWpm > MIN_WPM) { gWpm -= WPM_STEP; drawBottomBar(); }
+                    if (gWpm > MIN_WPM) { gWpm -= WPM_STEP; drawBottomBar(); saveSettings(); }
                 }
                 else if (k == '=' || k == '+') {
                     if (gBrightness < MAX_BRIGHT) {
                         gBrightness = min(gBrightness + BRIGHT_STEP, MAX_BRIGHT);
                         M5Cardputer.Display.setBrightness(gBrightness);
+                        saveSettings();
                     }
                 }
                 else if (k == '-') {
                     if (gBrightness > MIN_BRIGHT) {
                         gBrightness = max(gBrightness - BRIGHT_STEP, MIN_BRIGHT);
                         M5Cardputer.Display.setBrightness(gBrightness);
+                        saveSettings();
                     }
                 }
             }
@@ -388,7 +395,7 @@ void openBook() {
     gSaveCount = 0;
 
     gState   = READING;
-    gPlaying = true;
+    gPlaying = false;
     gAnchorPos = -1;
     if (gEncoderOk) gEncPrev = gEncoder.getEncoderValue();
 
@@ -531,6 +538,37 @@ void saveProgress() {
     File f = SD.open(path.c_str(), FILE_WRITE);
     if (!f) return;
     f.println(gCharOff);
+    f.close();
+}
+
+void loadSettings() {
+    if (!SD.exists("/.rsvp_config")) return;
+    File f = SD.open("/.rsvp_config", FILE_READ);
+    if (!f) return;
+    while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        String key = line.substring(0, eq);
+        int val = line.substring(eq + 1).toInt();
+        if (key == "wpm") {
+            if (val >= MIN_WPM && val <= MAX_WPM) gWpm = val;
+        } else if (key == "bright") {
+            if (val >= MIN_BRIGHT && val <= MAX_BRIGHT) gBrightness = val;
+        }
+    }
+    f.close();
+}
+
+void saveSettings() {
+    SD.remove("/.rsvp_config");
+    File f = SD.open("/.rsvp_config", FILE_WRITE);
+    if (!f) return;
+    f.print("wpm=");
+    f.println(gWpm);
+    f.print("bright=");
+    f.println(gBrightness);
     f.close();
 }
 
