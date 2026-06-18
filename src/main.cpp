@@ -94,6 +94,8 @@ static SPIClass          gSdSpi(HSPI);
 static M5UnitScroll      gEncoder;
 static bool              gEncoderOk   = false;
 static bool              gBtnPrev     = false;
+static bool              gCtrlPrev    = false;
+static bool              gBtn0Prev    = false;
 static int32_t           gEncPrev     = 0;
 
 void scanBooks();
@@ -122,6 +124,8 @@ void retreatWord();
 void setup() {
     auto cfg = M5.config();
     M5Cardputer.begin(cfg, true);
+
+    pinMode(0, INPUT_PULLUP);
 
     M5Cardputer.Display.setRotation(1);
     M5Cardputer.Display.setBrightness(gBrightness);
@@ -252,6 +256,20 @@ void loop() {
             }
             gBtnPrev = btnNow;
         }
+
+        bool ctrlNow = M5Cardputer.Keyboard.keysState().ctrl;
+        if (ctrlNow && !gCtrlPrev) {
+            gPlaying = !gPlaying;
+            if (gPlaying) gLastMs = millis();
+        }
+        gCtrlPrev = ctrlNow;
+
+        bool b0Now = (digitalRead(0) == LOW);
+        if (b0Now && !gBtn0Prev) {
+            gPlaying = !gPlaying;
+            if (gPlaying) gLastMs = millis();
+        }
+        gBtn0Prev = b0Now;
 
         if (!gPlaying) return;
         if (millis() - gLastMs < gDelay) return;
