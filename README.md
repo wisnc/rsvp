@@ -73,6 +73,10 @@ backspace - exit to home
 
 space - pause/play rsvp
 
+ctrl - pause/play rsvp, for left hand
+
+BtnG0 - pause/play rsvp for all hands
+
 p - show/hide peripheral words on the rsvp
 
 ## ASCII conversion
@@ -91,6 +95,10 @@ this script checks out all directories beside it and converts all .txt
 **fun fact!** you can run this python script on micropython within the cardputer. use a micropython firmware
 
 ## Version History / Changelog
+
+### 2.3
+
+- added more keys for pause
 
 ### 2.2
 
