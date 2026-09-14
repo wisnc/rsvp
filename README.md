@@ -31,7 +31,7 @@ Check releases for the latest binary
 
 or [shameless plug](https://github.com/wisnc/crub)
 
-## How to use
+## How to use (old)
 
 your SD must have the file structure for ebooks as
 
@@ -57,27 +57,53 @@ running ascii-auto.py through python or micropython `run('ascii-auto.py')` will 
 easiest way to convert to .txt is through https://convertio.co/epub-txt/
 otherwise use the epub2txt.py from the project
 
-Up - faster wpm
+## epub support
 
-Down - slower wpm
+drop an .epub straight into the book folder. rsvp will generate the .txt
 
-Left - previous word
+```
+/ebooks/
+├─ BookName1/
+│  └─ book.epub
+├─ BookName2/
+│  ├─ read.txt
+│  └─ prog.txt
+```
 
-Right - next word
+on first open the cardputer converts the epub to read.txt itself. a big book takes a while, the screen counts chapters while it works
 
-plus (+) - brighter display
+the conversion leaves behind a few files next to the epub
 
-minus (-) - dimmer display
+```
+read.txt      the book as plain text
+prog.txt      progress in character count
+.rsvp_meta    title, author, total length, cover flag, and chapter offsets
+.rsvp_cover   cover image pulled from the epub, jpg or png
+```
 
-backspace - exit to home
+## hotkeys
 
-space - pause/play rsvp
+`/` next word
 
-ctrl - pause/play rsvp, for left hand
+`,` prvious word
 
-BtnG0 - pause/play rsvp for all hands
+`space`, `ctrl`, `G0` pause playback
 
-p - show/hide peripheral words on the rsvp
+`;` increase wpm
+
+`.` decrease wpm
+
+`=` increase brightness
+
+`-` decrease brightness
+
+`p` display peripheral words
+
+`Fn + /` next chapter
+
+`Fn + ,` previous chapter
+
+plain .txt books have no chapter data, so the same keys jump 2% of the book forward or back instead
 
 ## ASCII conversion
 
@@ -95,6 +121,24 @@ this script checks out all directories beside it and converts all .txt
 **fun fact!** you can run this python script on micropython within the cardputer. use a micropython firmware
 
 ## Version History / Changelog
+
+### 3.1
+
+- chunked extraction / conversion to prevent heap overflow
+
+- cyrillic support return (accidentally removed it on 3.0)
+
+- chapter navigation with fn arrowkeys
+
+- added progress on menu
+
+
+### 3.0
+
+- epub support. conversion on device, chapter offsets, cover extraction
+
+- info screen with cover art, title, author, chapter and progress
+
 
 ### 2.3
 
