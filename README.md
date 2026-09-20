@@ -122,6 +122,13 @@ this script checks out all directories beside it and converts all .txt
 
 ## Version History / Changelog
 
+### 3.2
+
+- added boot screen
+
+- added progress % on the menu / library
+
+
 ### 3.1
 
 - chunked extraction / conversion to prevent heap overflow
