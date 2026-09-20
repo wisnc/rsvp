@@ -141,6 +141,8 @@ int snapWordStart(int a);
 void showCurrentWord();
 void saveProgress();
 int  loadProgress(const String& dir);
+long progTotal(const String& dir);
+void writeProg(const String& dir, long off, long total);
 void loadSettings();
 void saveSettings();
 unsigned long wordDelay(const String& w);
@@ -458,10 +460,14 @@ void scanBooks() {
 
 
 int bookPct(const String& dir) {
-    long total = metaLong(dir, "total=");
-    if (total <= 0) total = epubFileSize(dir + "/read.txt");
-    if (total <= 0) return -1;
     long off = loadProgress(dir);
+    long total = progTotal(dir);
+    if (total <= 0) {
+        total = metaLong(dir, "total=");
+        if (total <= 0) total = epubFileSize(dir + "/read.txt");
+        if (total <= 0) return -1;
+        writeProg(dir, off, total);
+    }
     if (off < 0) off = 0;
     if (off > total) off = total;
     return (int)((off * 100 + total / 2) / total);
@@ -980,6 +986,7 @@ void openBook() {
     gCharOff   = loadProgress(gBooks[gSel].dir);
     gResumeOff = gCharOff;
     gSaveCount = 0;
+    if (progTotal(dir) != gFileSize) writeProg(dir, gCharOff, gFileSize);
 
     gState   = READING;
     gPlaying = false;
@@ -1118,14 +1125,30 @@ int loadProgress(const String& dir) {
     return (val > 0) ? val : 0;
 }
 
-void saveProgress() {
-    if (gCharOff < gResumeOff) return;
-    String path = gBooks[gSel].dir + "/prog.txt";
+long progTotal(const String& dir) {
+    String path = dir + "/prog.txt";
+    File f = SD.open(path.c_str(), FILE_READ);
+    if (!f) return -1;
+    f.readStringUntil('\n');
+    String v = f.readStringUntil('\n');
+    f.close();
+    long t = v.toInt();
+    return (t > 0) ? t : -1;
+}
+
+void writeProg(const String& dir, long off, long total) {
+    String path = dir + "/prog.txt";
     SD.remove(path.c_str());
     File f = SD.open(path.c_str(), FILE_WRITE);
     if (!f) return;
-    f.println(gCharOff);
+    f.println(off);
+    f.println(total);
     f.close();
+}
+
+void saveProgress() {
+    if (gCharOff < gResumeOff) return;
+    writeProg(gBooks[gSel].dir, gCharOff, gFileSize);
 }
 
 void loadSettings() {
