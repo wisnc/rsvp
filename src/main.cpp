@@ -69,10 +69,12 @@
 
 #define CHAP_SLACK   64
 #define SKIP_PCT      2
+#define PCT_PENDING  -2
+#define BOOT_PCT      5
 
 enum State { MENU, INFO, READING };
 
-struct Book { String title; String dir; uint32_t mtime; int pct; };
+struct Book { String title; String dir; int pct; };
 struct Word { String text; int pos; };
 
 static State             gState = MENU;
@@ -114,6 +116,10 @@ static int32_t           gEncPrev     = 0;
 
 void scanBooks();
 int  bookPct(const String& dir);
+bool pctWorker();
+void drawMenuPct(int i);
+void bootSplash();
+void bootLog(const String& msg);
 bool dirHasEpub(const String& dir);
 String findEpub(const String& dir);
 long metaLong(const String& dir, const char* key);
@@ -176,11 +182,13 @@ void setup() {
     M5Cardputer.Display.setTextColor(COL_TEXT);
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.setTextWrap(false);
+    bootSplash();
 
     gCanvas.setColorDepth(16);
     gCanvasOk = (gCanvas.createSprite(SCR_W, SCR_H) != nullptr);
     if (gCanvasOk) gCanvas.setTextWrap(false);
 
+    bootLog("scroll wheel");
     Wire.begin(GROVE_SDA, GROVE_SCL);
     gEncoderOk = gEncoder.begin(&Wire, SCROLL_ADDR, GROVE_SDA, GROVE_SCL, 400000U);
     if (gEncoderOk) {
@@ -188,16 +196,18 @@ void setup() {
         gEncoder.setLEDColor(0x000000);
     }
 
+    bootLog("mounting sd card");
     gSdSpi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
     if (!SD.begin(SD_CS, gSdSpi, 25000000)) {
-        M5Cardputer.Display.setCursor(10, 50);
-        M5Cardputer.Display.print("SD card not found");
+        bootLog("sd card not found");
         while (true) delay(1000);
     }
 
+    bootLog("loading settings");
     loadSettings();
     M5Cardputer.Display.setBrightness(gBrightness);
 
+    bootLog("scanning /ebooks");
     scanBooks();
 
     if (gBooks.empty()) {
@@ -216,7 +226,7 @@ void loop() {
     M5Cardputer.update();
 
     if (gState == MENU) {
-        if (!M5Cardputer.Keyboard.isChange() || !M5Cardputer.Keyboard.isPressed()) return;
+        if (!M5Cardputer.Keyboard.isChange() || !M5Cardputer.Keyboard.isPressed()) { pctWorker(); return; }
         auto ks = M5Cardputer.Keyboard.keysState();
 
         bool changed = false;
@@ -448,14 +458,56 @@ void scanBooks() {
             int lastSlash = fullPath.lastIndexOf('/');
             String title = (lastSlash >= 0) ? fullPath.substring(lastSlash + 1) : fullPath;
             String dir = "/ebooks/" + title;
-            uint32_t mt = (uint32_t)entry.getLastWrite();
             if (SD.exists((dir + "/read.txt").c_str()) || dirHasEpub(dir))
-                gBooks.push_back({title, dir, mt, bookPct(dir)});
+                gBooks.push_back({title, dir, PCT_PENDING});
         }
         entry.close();
     }
     root.close();
     std::reverse(gBooks.begin(), gBooks.end());
+    bootLog("found " + String((int)gBooks.size()) + " books");
+    int n = min((int)gBooks.size(), BOOT_PCT);
+    for (int i = 0; i < n; i++) {
+        bootLog("progress " + String(i + 1) + "/" + String(n) + "  " + gBooks[i].title);
+        gBooks[i].pct = bookPct(gBooks[i].dir);
+    }
+}
+
+bool pctWorker() {
+    int n = gBooks.size();
+    int pick = -1;
+    for (int i = gScroll; i < min(n, gScroll + 5); i++) if (gBooks[i].pct == PCT_PENDING) { pick = i; break; }
+    if (pick < 0) for (int i = 0; i < n; i++) if (gBooks[i].pct == PCT_PENDING) { pick = i; break; }
+    if (pick < 0) return false;
+    gBooks[pick].pct = bookPct(gBooks[pick].dir);
+    drawMenuPct(pick);
+    return true;
+}
+
+void bootSplash() {
+    auto& d = M5Cardputer.Display;
+    d.fillScreen(COL_BG);
+    d.setTextSize(4);
+    d.setTextColor(COL_ORP);
+    d.setCursor((SCR_W - 4 * 24) / 2, 28);
+    d.print("RSVP");
+    d.setTextSize(1);
+    d.setTextColor(COL_HIST);
+    d.setCursor((SCR_W - 32 * 6) / 2, 68);
+    d.print("rapid serial visual presentation");
+    d.setTextColor(COL_TEXT);
+}
+
+void bootLog(const String& msg) {
+    auto& d = M5Cardputer.Display;
+    d.fillRect(0, 112, SCR_W, SCR_H - 112, COL_BG);
+    d.setTextSize(1);
+    d.setTextColor(COL_DIM);
+    String m = msg;
+    if (m.length() > 36) m = m.substring(0, 33) + "...";
+    d.setCursor(10, 118);
+    d.print(m);
+    d.setTextColor(COL_TEXT);
 }
 
 
@@ -517,14 +569,23 @@ void drawMenu() {
         if (label.length() > 30) label = label.substring(0, 27) + "...";
         d.setCursor(14, y + 6);
         d.print(label);
-        if (gBooks[i].pct >= 0) {
-            String p = String(gBooks[i].pct) + "%";
-            d.setTextColor(i == gSel ? COL_ORP : COL_HIST);
-            d.setCursor(SCR_W - 10 - p.length() * 6, y + 6);
-            d.print(p);
-        }
+        drawMenuPct(i);
         y += itemH;
     }
+    d.setTextColor(COL_TEXT);
+}
+
+void drawMenuPct(int i) {
+    if (i < gScroll || i >= gScroll + 5 || gBooks[i].pct < 0) return;
+    auto& d = M5Cardputer.Display;
+    int y = 30 + (i - gScroll) * 20;
+    String p = String(gBooks[i].pct) + "%";
+    int x = SCR_W - 10 - p.length() * 6;
+    d.fillRect(SCR_W - 34, y + 1, 28, 18, i == gSel ? COL_SELBG : COL_BG);
+    d.setTextSize(1);
+    d.setTextColor(i == gSel ? COL_ORP : COL_HIST);
+    d.setCursor(x, y + 6);
+    d.print(p);
     d.setTextColor(COL_TEXT);
 }
 
